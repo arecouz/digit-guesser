@@ -6,8 +6,10 @@ const Canvas = ({ setImageData }) => {
   const contextRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
 
-  const CANVAS_WIDTH = 300;
-  const CANVAS_HEIGHT = 300;
+  const CANVAS_WIDTH = 280;
+  const CANVAS_HEIGHT = 280;
+  const TARGET_WIDTH = 28;
+  const TARGET_HEIGHT = 28;
 
   useEffect(() => {
     // Set the canvas and its context, use ref's to access
@@ -22,11 +24,52 @@ const Canvas = ({ setImageData }) => {
     contextRef.current = context;
   }, []);
 
-  // Discards RGB to return list of black or white pixels
-  const extractAlpha = (imageData) => {
-    console.log(imageData)
-    return imageData.data.filter((_, index) => (index + 1) % 4 === 0);
-  }
+  const compressImageData = (imageData) => {
+    // Create temporary canvases for resizing
+    const tempCanvas = document.createElement('canvas');
+    const tempCtx = tempCanvas.getContext('2d');
+    const finalCanvas = document.createElement('canvas');
+    const finalCtx = finalCanvas.getContext('2d');
+
+    // Set canvas sizes
+    tempCanvas.width = CANVAS_WIDTH;
+    tempCanvas.height = CANVAS_HEIGHT;
+    finalCanvas.width = TARGET_WIDTH;
+    finalCanvas.height = TARGET_HEIGHT;
+
+    // Put the original imageData into the temp canvas
+    tempCtx.putImageData(imageData, 0, 0);
+
+    // Draw the temp canvas onto the final canvas at the smaller size
+    finalCtx.drawImage(
+      tempCanvas,
+      0,
+      0,
+      CANVAS_WIDTH,
+      CANVAS_HEIGHT,
+      0,
+      0,
+      TARGET_WIDTH,
+      TARGET_HEIGHT
+    );
+
+    const compressedData = finalCtx.getImageData(
+      0,
+      0,
+      TARGET_WIDTH,
+      TARGET_HEIGHT
+    );
+
+    // Convert to grayscale and normalize to match MNIST format
+    const normalizedData = new Uint8Array(TARGET_WIDTH * TARGET_HEIGHT);
+
+    for (let i = 0; i < compressedData.data.length; i += 4) {
+      // Convert RGBA to grayscale and invert (MNIST uses white background, black digits)
+      normalizedData[i / 4] = 255 - compressedData.data[i + 3]; // Just use alpha channel
+    }
+
+    return normalizedData;
+  };
 
   const startDrawing = ({ nativeEvent }) => {
     const { offsetX, offsetY } = nativeEvent;
@@ -35,26 +78,27 @@ const Canvas = ({ setImageData }) => {
     setIsDrawing(true);
   };
 
-  // Sets Image data when the user stops drawing a line
   const stopDrawing = () => {
     contextRef.current.closePath();
     setIsDrawing(false);
-    const blackAndWhite = extractAlpha(contextRef.current.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT))
-    setImageData(blackAndWhite);
+    const originalImageData = contextRef.current.getImageData(
+      0,
+      0,
+      CANVAS_WIDTH,
+      CANVAS_HEIGHT
+    );
+    const processedData = compressImageData(originalImageData);
+    setImageData(processedData);
   };
 
   const draw = ({ nativeEvent }) => {
     if (!isDrawing) return;
-
-    // For mouse events, use offsetX, offsetY
     const { offsetX, offsetY } = nativeEvent;
     contextRef.current.lineTo(offsetX, offsetY);
     contextRef.current.stroke();
   };
 
-  // Touch event handlers
   const startDrawingTouch = (e) => {
-    // Get touch position from e.touches[0]
     const { clientX, clientY } = e.touches[0];
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
@@ -79,20 +123,31 @@ const Canvas = ({ setImageData }) => {
     contextRef.current.stroke();
   };
 
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    const context = contextRef.current;
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    // Reset the image data to an empty canvas
+    setImageData(new Uint8Array(TARGET_WIDTH * TARGET_HEIGHT).fill(255));
+  };
+
   return (
-    <canvas
-      className='border-8'
-      ref={canvasRef}
-      // Desktop
-      onMouseDown={startDrawing}
-      onMouseUp={stopDrawing}
-      onMouseMove={draw}
-      // Mobile
-      onTouchStart={startDrawingTouch}
-      onTouchMove={drawTouch}
-      onTouchEnd={stopDrawing}
-      onTouchCancel={stopDrawing}
-    ></canvas>
+    <>
+      <canvas
+        className='border-8'
+        ref={canvasRef}
+        // Desktop
+        onMouseDown={startDrawing}
+        onMouseUp={stopDrawing}
+        onMouseMove={draw}
+        // Mobile
+        onTouchStart={startDrawingTouch}
+        onTouchMove={drawTouch}
+        onTouchEnd={stopDrawing}
+        onTouchCancel={stopDrawing}
+      ></canvas>
+      <button onClick={() => clearCanvas()}>clear</button>
+    </>
   );
 };
 

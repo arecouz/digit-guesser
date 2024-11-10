@@ -3,7 +3,7 @@ import Canvas from './components/Canvas';
 
 const App = () => {
   const [imageData, setImageData] = useState(null);
-  
+
   useEffect(() => {
     console.log(imageData);
   }, [imageData]);
